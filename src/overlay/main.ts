@@ -16,7 +16,7 @@ interface WindowRect {
 
 const monitorIndex = Number(new URLSearchParams(location.search).get("monitor") ?? "0");
 
-const frozenImg = document.getElementById("frozen") as HTMLImageElement;
+const frozenCanvas = document.getElementById("frozen") as HTMLCanvasElement;
 const selectionEl = document.getElementById("selection") as HTMLDivElement;
 const dimensionsEl = document.getElementById("dimensions") as HTMLDivElement;
 
@@ -55,10 +55,23 @@ function hideSelection() {
 }
 
 async function loadFrame() {
-  // Pixels come over the custom `capture:` protocol (raw PNG bytes), only
-  // the geometry comes over IPC.
-  frozenImg.src = `http://capture.localhost/${monitorIndex}`;
-  frame = await invoke<MonitorFrame>("get_pending_capture_meta", { monitor: monitorIndex });
+  // Raw RGBA over the custom `capture:` protocol, blitted straight onto a
+  // canvas — no PNG encode/decode anywhere. Geometry comes over IPC.
+  const [response, meta] = await Promise.all([
+    fetch(`http://capture.localhost/${monitorIndex}`),
+    invoke<MonitorFrame>("get_pending_capture_meta", { monitor: monitorIndex }),
+  ]);
+  const bytes = new Uint8ClampedArray(await response.arrayBuffer());
+  frame = meta;
+
+  frozenCanvas.width = meta.width;
+  frozenCanvas.height = meta.height;
+  const ctx = frozenCanvas.getContext("2d")!;
+  ctx.putImageData(new ImageData(bytes, meta.width, meta.height), 0, 0);
+
+  // Frame is painted — now it's safe to show this window (avoids the
+  // black flash of an empty webview).
+  await invoke("overlay_ready");
 }
 
 function finish(localX: number, localY: number, width: number, height: number) {

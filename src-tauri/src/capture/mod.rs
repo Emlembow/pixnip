@@ -200,8 +200,23 @@ unsafe fn capture_output_dxgi(
     })
 }
 
+/// Lookup table for the linear -> sRGB gamma encode, so the per-pixel hot
+/// loop avoids `powf`. Indexed by linear value scaled to [0, 4095].
+fn srgb_lut() -> &'static [u8; 4096] {
+    static LUT: std::sync::OnceLock<[u8; 4096]> = std::sync::OnceLock::new();
+    LUT.get_or_init(|| {
+        let mut lut = [0u8; 4096];
+        for (i, entry) in lut.iter_mut().enumerate() {
+            *entry = tonemap::linear_to_srgb_u8(i as f32 / 4095.0);
+        }
+        lut
+    })
+}
+
 /// Converts a mapped FP16 scRGB surface into display-correct 8-bit sRGB
 /// via the SDR-white-level tone map. Shared by the WGC and DXGI paths.
+/// Rows are processed across all cores — this touches 7M+ pixels on a
+/// large monitor and sits directly on the keypress-to-overlay latency.
 pub(crate) fn fp16_scrgb_to_rgba8(
     data: &[u8],
     row_pitch: usize,
@@ -210,21 +225,36 @@ pub(crate) fn fp16_scrgb_to_rgba8(
     sdr_scale: f32,
     rgba: &mut [u8],
 ) {
-    for y in 0..height as usize {
-        let row = &data[y * row_pitch..y * row_pitch + width as usize * 8];
-        for x in 0..width as usize {
-            let px = &row[x * 8..x * 8 + 8];
-            let r = half::f16::from_bits(u16::from_le_bytes([px[0], px[1]])).to_f32();
-            let g = half::f16::from_bits(u16::from_le_bytes([px[2], px[3]])).to_f32();
-            let b = half::f16::from_bits(u16::from_le_bytes([px[4], px[5]])).to_f32();
-            let [r, g, b] = tonemap::tonemap_pixel([r, g, b], sdr_scale);
-            let out = (y * width as usize + x) * 4;
-            rgba[out] = tonemap::linear_to_srgb_u8(r);
-            rgba[out + 1] = tonemap::linear_to_srgb_u8(g);
-            rgba[out + 2] = tonemap::linear_to_srgb_u8(b);
-            rgba[out + 3] = 255;
+    let lut = srgb_lut();
+    let width = width as usize;
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let rows_per_chunk = (height as usize).div_ceil(threads);
+
+    std::thread::scope(|scope| {
+        for (chunk_index, out_chunk) in rgba.chunks_mut(rows_per_chunk * width * 4).enumerate() {
+            let start_row = chunk_index * rows_per_chunk;
+            scope.spawn(move || {
+                for (row_offset, out_row) in out_chunk.chunks_mut(width * 4).enumerate() {
+                    let y = start_row + row_offset;
+                    let row = &data[y * row_pitch..y * row_pitch + width * 8];
+                    for x in 0..width {
+                        let px = &row[x * 8..x * 8 + 8];
+                        let r = half::f16::from_bits(u16::from_le_bytes([px[0], px[1]])).to_f32();
+                        let g = half::f16::from_bits(u16::from_le_bytes([px[2], px[3]])).to_f32();
+                        let b = half::f16::from_bits(u16::from_le_bytes([px[4], px[5]])).to_f32();
+                        let [r, g, b] = tonemap::tonemap_pixel([r, g, b], sdr_scale);
+                        let out = x * 4;
+                        out_row[out] = lut[(r.clamp(0.0, 1.0) * 4095.0) as usize];
+                        out_row[out + 1] = lut[(g.clamp(0.0, 1.0) * 4095.0) as usize];
+                        out_row[out + 2] = lut[(b.clamp(0.0, 1.0) * 4095.0) as usize];
+                        out_row[out + 3] = 255;
+                    }
+                }
+            });
         }
-    }
+    });
 }
 
 /// Swizzles a mapped BGRA8 surface (already display-referred) to RGBA8.

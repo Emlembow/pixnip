@@ -87,6 +87,14 @@ pub fn finish_region_capture(
     Ok(saved_path.to_string_lossy().into_owned())
 }
 
+/// Called by an overlay page once its frozen frame is painted; only then
+/// is the window shown, so no black flash is ever visible.
+#[tauri::command]
+pub fn overlay_ready(window: tauri::WebviewWindow) {
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
 /// Closes all overlay windows without saving anything.
 #[tauri::command]
 pub fn cancel_region_capture(app: AppHandle) {

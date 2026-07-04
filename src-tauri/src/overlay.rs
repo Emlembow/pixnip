@@ -53,8 +53,8 @@ pub fn open_overlays(app: &AppHandle, placements: &[Placement]) -> tauri::Result
         // regardless of this monitor's DPI scale factor.
         window.set_position(PhysicalPosition::new(placement.x, placement.y))?;
         window.set_size(PhysicalSize::new(placement.width, placement.height))?;
-        window.show()?;
-        window.set_focus()?;
+        // Stays hidden until the page has painted the frozen frame and
+        // calls `overlay_ready` — otherwise a black window flashes first.
     }
     Ok(())
 }

@@ -12,18 +12,6 @@ use tauri::{
     Manager, WindowEvent,
 };
 
-/// Encodes a captured frame as PNG tuned for speed, not size — the overlay
-/// needs to appear near-instantly and the bytes never leave the machine.
-fn encode_fast_png(m: &capture::CapturedMonitor) -> Result<Vec<u8>, image::ImageError> {
-    use image::codecs::png::{CompressionType, FilterType, PngEncoder};
-    use image::ImageEncoder;
-
-    let mut bytes = Vec::new();
-    PngEncoder::new_with_quality(&mut bytes, CompressionType::Fast, FilterType::NoFilter)
-        .write_image(&m.rgba, m.width, m.height, image::ExtendedColorType::Rgba8)?;
-    Ok(bytes)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -45,13 +33,15 @@ pub fn run() {
             commands::capture_full_screen,
             commands::start_region_capture,
             commands::get_pending_capture_meta,
+            commands::overlay_ready,
             commands::finish_region_capture,
             commands::cancel_region_capture,
             commands::window_rect_at_point,
         ])
-        // Serves the frozen monitor frames to overlay windows as raw PNG
-        // bytes (http://capture.localhost/<monitor-index>) — far faster
-        // than pushing a multi-megapixel image through JSON IPC.
+        // Serves the frozen monitor frames to overlay windows as raw RGBA
+        // bytes (http://capture.localhost/<monitor-index>). No PNG encode
+        // here and no decode in the webview — the overlay blits the bytes
+        // straight onto a canvas, so the frame appears near-instantly.
         .register_uri_scheme_protocol("capture", |ctx, request| {
             let monitor: usize = request
                 .uri()
@@ -61,12 +51,19 @@ pub fn run() {
                 .unwrap_or(usize::MAX);
             let pending = ctx.app_handle().state::<PendingCapture>();
             let monitors = pending.0.lock().unwrap();
-            match monitors.get(monitor).map(encode_fast_png) {
-                Some(Ok(bytes)) => tauri::http::Response::builder()
-                    .header("Content-Type", "image/png")
-                    .body(bytes)
+            match monitors.get(monitor) {
+                Some(m) => tauri::http::Response::builder()
+                    .header("Content-Type", "application/octet-stream")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .header("X-Frame-Width", m.width.to_string())
+                    .header("X-Frame-Height", m.height.to_string())
+                    .header(
+                        "Access-Control-Expose-Headers",
+                        "X-Frame-Width, X-Frame-Height",
+                    )
+                    .body(m.rgba.clone())
                     .unwrap(),
-                _ => tauri::http::Response::builder()
+                None => tauri::http::Response::builder()
                     .status(404)
                     .body(Vec::new())
                     .unwrap(),
