@@ -1,0 +1,85 @@
+:root {
+  --accent: #0066cc;
+  --ink: #1d1d1f;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: crosshair;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+#frozen {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Everything outside the selection rect is dimmed via a giant spread
+   box-shadow "spotlight" — no separate overlay layer needed. */
+#selection {
+  position: absolute;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+#selection.window-snap {
+  border-style: dashed;
+  border-color: rgba(0, 102, 204, 0.85);
+}
+
+#selection.hidden {
+  display: none;
+}
+
+#dimensions {
+  position: absolute;
+  transform: translateY(-140%);
+  background: rgba(29, 29, 31, 0.85);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.224px;
+  line-height: 1.43;
+  padding: 4px 10px;
+  border-radius: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#dimensions.hidden {
+  display: none;
+}
+
+#hint {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(245, 245, 247, 0.8);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.224px;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  pointer-events: none;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+}

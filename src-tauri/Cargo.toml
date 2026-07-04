@@ -26,6 +26,7 @@ serde_json = "1"
 half = "2"
 image = { version = "0.25", default-features = false, features = ["png"] }
 dirs = "6"
+base64 = "0.22"
 
 [dependencies.windows]
 version = "0.61"
@@ -35,11 +36,18 @@ features = [
     "Win32_Graphics_Direct3D11",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
     "Win32_Devices_Display",
     "Win32_System_SystemInformation",
     "Win32_System_Registry",
+    "Win32_System_WinRT_Graphics_Capture",
+    "Win32_System_WinRT_Direct3D11",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+    "Foundation",
 ]
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

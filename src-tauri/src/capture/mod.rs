@@ -1,4 +1,5 @@
 pub mod tonemap;
+pub mod wgc;
 
 use std::mem::size_of;
 use windows::core::Interface;
@@ -24,17 +25,41 @@ use windows::Win32::Graphics::Dxgi::{
 };
 
 pub struct CapturedMonitor {
+    /// This monitor's origin in virtual desktop coordinates.
+    pub x: i32,
+    pub y: i32,
     pub width: u32,
     pub height: u32,
     /// Tone-mapped, display-correct sRGB pixels, row-major, 4 bytes/pixel.
     pub rgba: Vec<u8>,
 }
 
-/// Captures every active monitor. Desktop Duplication hands back either
-/// already-correct 8-bit BGRA (the desktop compositor did the SDR/HDR
-/// composition itself) or, on some systems, raw linear scRGB FP16 — in
-/// which case we tone-map it ourselves against the monitor's real SDR
-/// white level so SDR content isn't blown out.
+impl CapturedMonitor {
+    /// Returns a new capture cropped to the given region (in this monitor's
+    /// local pixel coordinates, i.e. already offset by `x`/`y`).
+    pub fn cropped(&self, x: u32, y: u32, width: u32, height: u32) -> CapturedMonitor {
+        let mut rgba = vec![0u8; (width * height * 4) as usize];
+        for row in 0..height {
+            let src_start = (((y + row) * self.width + x) * 4) as usize;
+            let src_end = src_start + (width * 4) as usize;
+            let dst_start = (row * width * 4) as usize;
+            let dst_end = dst_start + (width * 4) as usize;
+            rgba[dst_start..dst_end].copy_from_slice(&self.rgba[src_start..src_end]);
+        }
+        CapturedMonitor {
+            x: self.x + x as i32,
+            y: self.y + y as i32,
+            width,
+            height,
+            rgba,
+        }
+    }
+}
+
+/// Captures every active monitor, preferring Windows.Graphics.Capture with
+/// an explicit scRGB FP16 surface (so *our* SDR-white-level tone mapping
+/// runs, not the compositor's naive one). Falls back per-monitor to legacy
+/// DXGI Desktop Duplication where WGC is unavailable.
 pub fn capture_all_monitors() -> windows::core::Result<Vec<CapturedMonitor>> {
     let mut results = Vec::new();
     unsafe {
@@ -47,8 +72,14 @@ pub fn capture_all_monitors() -> windows::core::Result<Vec<CapturedMonitor>> {
             let mut output_index = 0u32;
             while let Ok(output) = adapter.EnumOutputs(output_index) {
                 output_index += 1;
-                if let Ok(captured) = capture_output(&adapter, &output) {
-                    results.push(captured);
+                match wgc::capture_output(&adapter, &output) {
+                    Ok(captured) => results.push(captured),
+                    Err(wgc_err) => {
+                        eprintln!("WGC capture failed ({wgc_err:?}); using DXGI duplication");
+                        if let Ok(captured) = capture_output_dxgi(&adapter, &output) {
+                            results.push(captured);
+                        }
+                    }
                 }
             }
         }
@@ -56,7 +87,7 @@ pub fn capture_all_monitors() -> windows::core::Result<Vec<CapturedMonitor>> {
     Ok(results)
 }
 
-unsafe fn capture_output(
+unsafe fn capture_output_dxgi(
     adapter: &IDXGIAdapter1,
     output: &IDXGIOutput,
 ) -> windows::core::Result<CapturedMonitor> {
@@ -145,34 +176,10 @@ unsafe fn capture_output(
 
     match format {
         DXGI_FORMAT_R16G16B16A16_FLOAT => {
-            for y in 0..height as usize {
-                let row = &data[y * row_pitch..y * row_pitch + width as usize * 8];
-                for x in 0..width as usize {
-                    let px = &row[x * 8..x * 8 + 8];
-                    let r = half::f16::from_bits(u16::from_le_bytes([px[0], px[1]])).to_f32();
-                    let g = half::f16::from_bits(u16::from_le_bytes([px[2], px[3]])).to_f32();
-                    let b = half::f16::from_bits(u16::from_le_bytes([px[4], px[5]])).to_f32();
-                    let [r, g, b] = tonemap::tonemap_pixel([r, g, b], sdr_scale);
-                    let out = (y * width as usize + x) * 4;
-                    rgba[out] = tonemap::linear_to_srgb_u8(r);
-                    rgba[out + 1] = tonemap::linear_to_srgb_u8(g);
-                    rgba[out + 2] = tonemap::linear_to_srgb_u8(b);
-                    rgba[out + 3] = 255;
-                }
-            }
+            fp16_scrgb_to_rgba8(data, row_pitch, width, height, sdr_scale, &mut rgba);
         }
         DXGI_FORMAT_B8G8R8A8_UNORM => {
-            for y in 0..height as usize {
-                let row = &data[y * row_pitch..y * row_pitch + width as usize * 4];
-                for x in 0..width as usize {
-                    let px = &row[x * 4..x * 4 + 4];
-                    let out = (y * width as usize + x) * 4;
-                    rgba[out] = px[2];
-                    rgba[out + 1] = px[1];
-                    rgba[out + 2] = px[0];
-                    rgba[out + 3] = 255;
-                }
-            }
+            bgra8_to_rgba8(data, row_pitch, width, height, &mut rgba);
         }
         _ => {
             return Err(windows::core::Error::from(
@@ -185,17 +192,69 @@ unsafe fn capture_output(
     duplication.ReleaseFrame()?;
 
     Ok(CapturedMonitor {
+        x: desc.DesktopCoordinates.left,
+        y: desc.DesktopCoordinates.top,
         width,
         height,
         rgba,
     })
 }
 
+/// Converts a mapped FP16 scRGB surface into display-correct 8-bit sRGB
+/// via the SDR-white-level tone map. Shared by the WGC and DXGI paths.
+pub(crate) fn fp16_scrgb_to_rgba8(
+    data: &[u8],
+    row_pitch: usize,
+    width: u32,
+    height: u32,
+    sdr_scale: f32,
+    rgba: &mut [u8],
+) {
+    for y in 0..height as usize {
+        let row = &data[y * row_pitch..y * row_pitch + width as usize * 8];
+        for x in 0..width as usize {
+            let px = &row[x * 8..x * 8 + 8];
+            let r = half::f16::from_bits(u16::from_le_bytes([px[0], px[1]])).to_f32();
+            let g = half::f16::from_bits(u16::from_le_bytes([px[2], px[3]])).to_f32();
+            let b = half::f16::from_bits(u16::from_le_bytes([px[4], px[5]])).to_f32();
+            let [r, g, b] = tonemap::tonemap_pixel([r, g, b], sdr_scale);
+            let out = (y * width as usize + x) * 4;
+            rgba[out] = tonemap::linear_to_srgb_u8(r);
+            rgba[out + 1] = tonemap::linear_to_srgb_u8(g);
+            rgba[out + 2] = tonemap::linear_to_srgb_u8(b);
+            rgba[out + 3] = 255;
+        }
+    }
+}
+
+/// Swizzles a mapped BGRA8 surface (already display-referred) to RGBA8.
+pub(crate) fn bgra8_to_rgba8(
+    data: &[u8],
+    row_pitch: usize,
+    width: u32,
+    height: u32,
+    rgba: &mut [u8],
+) {
+    for y in 0..height as usize {
+        let row = &data[y * row_pitch..y * row_pitch + width as usize * 4];
+        for x in 0..width as usize {
+            let px = &row[x * 4..x * 4 + 4];
+            let out = (y * width as usize + x) * 4;
+            rgba[out] = px[2];
+            rgba[out + 1] = px[1];
+            rgba[out + 2] = px[0];
+            rgba[out + 3] = 255;
+        }
+    }
+}
+
 /// Looks up the real SDR white level for the monitor behind `desc` and
 /// returns the scale factor that normalizes scRGB values against it.
 /// Falls back to `Ok(1.0)` semantics (via caller's `unwrap_or`) if the
 /// monitor can't be matched or the OS doesn't report a level for it.
-unsafe fn sdr_white_scale_for_output(desc: &DXGI_OUTPUT_DESC) -> windows::core::Result<f32> {
+pub(crate) unsafe fn sdr_white_scale_for_output(
+    desc: &DXGI_OUTPUT_DESC,
+) -> windows::core::Result<f32> {
     let device_name = pwstr_to_string(&desc.DeviceName);
 
     let mut path_count = 0u32;

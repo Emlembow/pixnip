@@ -9,13 +9,64 @@ pub fn screenshots_dir() -> Result<PathBuf, String> {
     Ok(pictures.join("Screenshots"))
 }
 
-/// Encodes a captured monitor as PNG and saves it into the screenshots
-/// folder, creating the folder if needed. Returns the written file path.
-pub fn save_capture(capture: &CapturedMonitor) -> Result<PathBuf, String> {
-    let dir = screenshots_dir()?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+/// Fallback when the primary folder is unwritable — typically because the
+/// Pictures folder is OneDrive-redirected and Windows' Controlled Folder
+/// Access blocks unrecognized apps (reported, misleadingly, as "file not
+/// found"). Local app data is never CFA-protected.
+fn fallback_screenshots_dir() -> Result<PathBuf, String> {
+    let base = dirs::data_local_dir().ok_or("could not resolve local app data")?;
+    Ok(base.join("BetterSS").join("Screenshots"))
+}
 
-    let path = dir.join(format!("{}.png", timestamped_filename()));
+/// The folder screenshots actually land in: the primary if writable,
+/// otherwise the fallback. Used by "Open Screenshots Folder".
+pub fn effective_screenshots_dir() -> Result<PathBuf, String> {
+    if let Ok(dir) = screenshots_dir() {
+        if dir_is_writable(&dir) {
+            return Ok(dir);
+        }
+    }
+    fallback_screenshots_dir()
+}
+
+fn dir_is_writable(dir: &std::path::Path) -> bool {
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".betterss-write-probe");
+    let ok = std::fs::write(&probe, b"").is_ok();
+    let _ = std::fs::remove_file(&probe);
+    ok
+}
+
+/// Encodes a captured monitor as PNG and saves it into the screenshots
+/// folder (falling back to a non-protected folder if the primary one is
+/// blocked), creating the folder if needed. Returns the written file path.
+pub fn save_capture(capture: &CapturedMonitor) -> Result<PathBuf, String> {
+    let filename = format!("{}.png", timestamped_filename());
+
+    let primary_err = match screenshots_dir().and_then(|dir| try_save(capture, &dir, &filename)) {
+        Ok(path) => return Ok(path),
+        Err(e) => e,
+    };
+
+    let fallback = fallback_screenshots_dir()?;
+    let path = try_save(capture, &fallback, &filename)
+        .map_err(|e| format!("primary save failed ({primary_err}); fallback failed ({e})"))?;
+    eprintln!(
+        "primary screenshots folder unwritable ({primary_err}); saved to {}",
+        path.display()
+    );
+    Ok(path)
+}
+
+fn try_save(
+    capture: &CapturedMonitor,
+    dir: &std::path::Path,
+    filename: &str,
+) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let path = dir.join(filename);
     image::save_buffer(
         &path,
         &capture.rgba,
@@ -24,7 +75,6 @@ pub fn save_capture(capture: &CapturedMonitor) -> Result<PathBuf, String> {
         image::ColorType::Rgba8,
     )
     .map_err(|e| e.to_string())?;
-
     Ok(path)
 }
 
