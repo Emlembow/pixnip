@@ -141,10 +141,14 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // Keep the app alive in the tray instead of exiting on close.
-                window.hide().unwrap();
-                api.prevent_close();
+            // Only the main (settings) window hides to the tray on close;
+            // transient windows like the capture overlays must really close,
+            // or their labels stay taken and the next capture fails.
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    window.hide().unwrap();
+                    api.prevent_close();
+                }
             }
         })
         .run(tauri::generate_context!())

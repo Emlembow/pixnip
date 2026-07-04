@@ -59,11 +59,12 @@ pub fn open_overlays(app: &AppHandle, placements: &[Placement]) -> tauri::Result
     Ok(())
 }
 
-/// Closes every open overlay window.
+/// Destroys every open overlay window immediately (bypassing the
+/// close-request path, which the main window uses for hide-to-tray).
 pub fn close_overlays(app: &AppHandle) {
     for window in app.webview_windows().values() {
         if window.label().starts_with(OVERLAY_LABEL_PREFIX) {
-            let _ = window.close();
+            let _ = window.destroy();
         }
     }
 }
