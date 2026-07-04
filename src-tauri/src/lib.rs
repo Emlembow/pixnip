@@ -1,5 +1,6 @@
 mod capture;
 mod commands;
+mod hotkey;
 mod output;
 
 use tauri::{
@@ -70,6 +71,15 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            hotkey::maybe_prompt_disable_snipping_binding();
+            std::thread::spawn(|| {
+                hotkey::run_blocking(|| {
+                    if let Err(e) = commands::capture_full_screen() {
+                        eprintln!("capture failed: {e}");
+                    }
+                });
+            });
 
             Ok(())
         })

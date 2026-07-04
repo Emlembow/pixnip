@@ -37,6 +37,9 @@ features = [
     "Win32_Graphics_Dxgi_Common",
     "Win32_Devices_Display",
     "Win32_System_SystemInformation",
+    "Win32_System_Registry",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
 ]
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
