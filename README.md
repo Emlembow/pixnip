@@ -40,6 +40,15 @@ npm run tauri dev    # run in development
 npm run tauri build  # produce a release build
 ```
 
+### If saved screenshots don't appear
+
+If your Pictures folder is redirected into OneDrive and screenshots silently
+fail to save, Windows' **Controlled Folder Access** (Windows Security >
+Virus & threat protection > Ransomware protection) is likely blocking an
+unrecognized/unsigned build of BetterSS from writing there. Add the exe
+under "Allow an app through Controlled folder access" — every screenshot
+tool runs into this on a fresh build.
+
 ## License
 
 [MIT](LICENSE)

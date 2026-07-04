@@ -1,3 +1,7 @@
+mod capture;
+mod commands;
+mod output;
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -20,16 +24,42 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![commands::capture_full_screen])
         .setup(|app| {
+            let capture_full = MenuItem::with_id(
+                app,
+                "capture_full_screen",
+                "Capture Full Screen",
+                true,
+                None::<&str>,
+            )?;
+            let open_folder = MenuItem::with_id(
+                app,
+                "open_screenshots_folder",
+                "Open Screenshots Folder",
+                true,
+                None::<&str>,
+            )?;
             let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&settings, &quit])?;
+            let menu = Menu::with_items(app, &[&capture_full, &open_folder, &settings, &quit])?;
 
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .on_menu_event(|app, event| match event.id.as_ref() {
+                    "capture_full_screen" => {
+                        if let Err(e) = commands::capture_full_screen() {
+                            eprintln!("capture failed: {e}");
+                        }
+                    }
+                    "open_screenshots_folder" => {
+                        if let Ok(dir) = output::screenshots_dir() {
+                            let _ = std::fs::create_dir_all(&dir);
+                            let _ = std::process::Command::new("explorer").arg(dir).spawn();
+                        }
+                    }
                     "settings" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
