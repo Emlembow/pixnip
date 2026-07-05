@@ -1,3 +1,8 @@
+/* Editor chrome per DESIGN.md: single Action Blue accent, radii grammar of
+   8 / 18 / pill, hairlines + backdrop blur for elevation (never shadows on
+   chrome — the one drop-shadow belongs to the screenshot itself), weight
+   ladder 400/600/700, tight -0.224px tracking at 14px. */
+
 :root {
   --accent: #0066cc;
   --accent-focus: #0071e3;
@@ -8,7 +13,11 @@
   --surface-tile-2: #2a2a2c;
   --on-dark: #ffffff;
   --muted: #cccccc;
-  --panel: rgba(0, 0, 0, 0.55);
+  --hairline-on-dark: rgba(255, 255, 255, 0.08);
+  --panel: rgba(39, 39, 41, 0.72);
+  --chip-translucent: rgba(210, 210, 215, 0.64);
+  --radius-sm: 8px;
+  --radius-lg: 18px;
   color-scheme: dark;
 }
 
@@ -37,7 +46,7 @@ body {
   display: none !important;
 }
 
-/* ── Top bar ───────────────────────────────────────────── */
+/* ── Top bar: global-nav, true black ───────────────────── */
 
 #topbar {
   height: 44px;
@@ -67,7 +76,7 @@ body {
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   display: flex;
@@ -93,17 +102,19 @@ body {
 
 #topbar-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
 .pill {
   border: none;
   border-radius: 9999px;
-  padding: 7px 18px;
+  padding: 8px 18px;
   font-family: inherit;
   font-size: 14px;
   font-weight: 400;
   letter-spacing: -0.224px;
+  line-height: 1;
   cursor: pointer;
   transition: transform 0.08s ease;
 }
@@ -128,11 +139,14 @@ body {
   border: 1px solid var(--accent-on-dark);
 }
 
+/* Dark utility chip — the Apple global-nav action (Sign In / Bag). */
 .pill.drag {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 8px 15px;
+  background: var(--ink);
   color: var(--on-dark);
   cursor: grab;
 }
@@ -141,6 +155,10 @@ body {
   width: 12px;
   height: 12px;
   fill: currentColor;
+}
+
+.pill.drag:hover {
+  background: var(--surface-tile-2);
 }
 
 .pill.drag:active {
@@ -153,7 +171,7 @@ body {
   pointer-events: none;
 }
 
-/* ── Stage ─────────────────────────────────────────────── */
+/* ── Stage: dark product tile, screenshot as the artifact ─ */
 
 #stage {
   flex: 1 1 auto;
@@ -168,6 +186,7 @@ body {
   overflow: hidden;
 }
 
+/* The one true shadow in the system: the product resting on a surface. */
 #scene {
   max-width: 100%;
   max-height: 100%;
@@ -192,14 +211,15 @@ body {
   cursor: cell;
 }
 
-/* ── Floating panels (social-app chrome over the image) ── */
+/* ── Floating panels: frosted, hairline-edged, 18px radius ─ */
 
 .float-panel {
   position: absolute;
   background: var(--panel);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
-  border-radius: 22px;
+  border: 1px solid var(--hairline-on-dark);
+  border-radius: var(--radius-lg);
   z-index: 5;
 }
 
@@ -220,14 +240,14 @@ body {
   width: 20px;
   height: 1px;
   margin: 4px 0;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--hairline-on-dark);
 }
 
 .tool {
   width: 38px;
   height: 38px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   display: flex;
@@ -253,12 +273,32 @@ body {
 }
 
 .tool:active {
-  transform: scale(0.92);
+  transform: scale(0.95);
 }
 
 .tool.active {
   background: var(--accent);
   color: #ffffff;
+}
+
+/* On short windows the full-size rail would overflow the stage and read
+   as an edge-to-edge strip instead of a floating panel — compact it. */
+@media (max-height: 620px) {
+  #tool-rail {
+    gap: 0;
+    padding: 6px 5px;
+  }
+  .tool {
+    width: 32px;
+    height: 32px;
+  }
+  .tool svg {
+    width: 17px;
+    height: 17px;
+  }
+  .rail-divider {
+    margin: 2px 0;
+  }
 }
 
 /* Left size rail with live brush preview */
@@ -279,7 +319,7 @@ body {
   height: 6px;
   border-radius: 9999px;
   background: #ff3b30;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 1px var(--hairline-on-dark);
   transition: width 0.08s ease, height 0.08s ease, background 0.12s ease;
 }
 
@@ -288,7 +328,7 @@ body {
   direction: rtl;
   width: 22px;
   height: 150px;
-  accent-color: #ffffff;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -308,7 +348,7 @@ body {
   width: 26px;
   height: 26px;
   border-radius: 9999px;
-  border: 2px solid rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   cursor: pointer;
   padding: 0;
   transition: transform 0.1s ease, box-shadow 0.1s ease;
@@ -319,20 +359,22 @@ body {
 }
 
 .swatch:active {
-  transform: scale(0.92);
+  transform: scale(0.95);
 }
 
+/* Selected state: the 2px Focus Blue ring, same as Apple's configurator
+   chips — the accent is the selection signal, not a heavier border. */
 .swatch.active {
-  transform: scale(1.25);
-  box-shadow: 0 0 0 2.5px #ffffff;
+  transform: scale(1.15);
   border-color: transparent;
+  box-shadow: 0 0 0 2px var(--accent-focus);
 }
 
 #custom-color {
   width: 26px;
   height: 26px;
   border-radius: 9999px;
-  border: 2px solid rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
   cursor: pointer;
   padding: 0;
@@ -348,7 +390,7 @@ body {
   opacity: 0;
 }
 
-/* ── Selection delete button ───────────────────────────── */
+/* ── Selection delete: translucent circular chip over imagery ─ */
 
 #sel-delete {
   position: absolute;
@@ -357,14 +399,15 @@ body {
   height: 26px;
   border: none;
   border-radius: 9999px;
-  background: #ff3b30;
-  color: #ffffff;
+  background: var(--chip-translucent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  transition: transform 0.08s ease;
+  transition: transform 0.08s ease, background 0.12s ease;
 }
 
 #sel-delete svg {
@@ -373,7 +416,12 @@ body {
 }
 
 #sel-delete:hover {
-  transform: scale(1.12);
+  background: rgba(210, 210, 215, 0.9);
+  transform: scale(1.08);
+}
+
+#sel-delete:active {
+  transform: scale(0.95);
 }
 
 /* ── Text entry ────────────────────────────────────────── */
@@ -389,7 +437,7 @@ body {
 #text-input {
   background: transparent;
   border: 1px dashed rgba(255, 255, 255, 0.6);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: inherit;
   font-family: inherit;
   font-weight: 700;
@@ -404,13 +452,15 @@ body {
   flex: 0 0 26px;
   border: none;
   border-radius: 9999px;
-  background: var(--panel);
+  background: var(--chip-translucent);
   backdrop-filter: blur(12px);
-  color: var(--muted);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: transform 0.08s ease, background 0.12s ease;
 }
 
 #text-bg-toggle svg {
@@ -418,7 +468,11 @@ body {
   height: 16px;
 }
 
+#text-bg-toggle:active {
+  transform: scale(0.95);
+}
+
 #text-wrap.bg-on #text-bg-toggle {
-  background: #ffffff;
-  color: var(--ink);
+  background: var(--accent);
+  color: #ffffff;
 }
