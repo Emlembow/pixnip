@@ -15,7 +15,7 @@ pub fn screenshots_dir() -> Result<PathBuf, String> {
 /// found"). Local app data is never CFA-protected.
 fn fallback_screenshots_dir() -> Result<PathBuf, String> {
     let base = dirs::data_local_dir().ok_or("could not resolve local app data")?;
-    Ok(base.join("BetterSS").join("Screenshots"))
+    Ok(base.join("Pixnip").join("Screenshots"))
 }
 
 /// The folder screenshots actually land in: the primary if writable,
@@ -33,7 +33,7 @@ fn dir_is_writable(dir: &std::path::Path) -> bool {
     if std::fs::create_dir_all(dir).is_err() {
         return false;
     }
-    let probe = dir.join(".betterss-write-probe");
+    let probe = dir.join(".pixnip-write-probe");
     let ok = std::fs::write(&probe, b"").is_ok();
     let _ = std::fs::remove_file(&probe);
     ok
@@ -108,7 +108,7 @@ fn try_save(
 /// file keeps the normal screenshot naming, since whatever app receives
 /// the drop keeps the dragged file's name.
 pub fn stage_drag_file(png_bytes: &[u8]) -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join("BetterSS").join("drag");
+    let dir = std::env::temp_dir().join("Pixnip").join("drag");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // Best-effort cleanup of earlier drags; the current session's files
     // must survive until the receiving app has copied them.

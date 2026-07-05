@@ -54,7 +54,7 @@ pub fn open_editor(app: &AppHandle, image_width: u32, image_height: u32) -> taur
         SESSION.fetch_add(1, Ordering::Relaxed)
     );
     WebviewWindowBuilder::new(app, &label, WebviewUrl::App("editor.html".into()))
-        .title("BetterSS")
+        .title("Pixnip")
         .inner_size(win_w, win_h)
         .min_inner_size(560.0, 400.0)
         .visible(false)

@@ -1,5 +1,5 @@
 //! Intercepts the PrintScreen key system-wide via a low-level keyboard hook
-//! so BetterSS can handle it instead of (or alongside) Windows' own binding.
+//! so Pixnip can handle it instead of (or alongside) Windows' own binding.
 
 use std::sync::mpsc::Sender;
 use std::sync::OnceLock;
@@ -104,9 +104,9 @@ pub fn maybe_prompt_disable_snipping_binding() {
                 None,
                 w!(
                     "Windows currently opens Snipping Tool when you press PrintScreen.\n\n\
-                     Disable that so BetterSS can use PrintScreen instead?"
+                     Disable that so Pixnip can use PrintScreen instead?"
                 ),
-                w!("BetterSS"),
+                w!("Pixnip"),
                 MB_YESNO | MB_ICONQUESTION,
             );
             if choice == IDYES {
@@ -132,7 +132,7 @@ unsafe fn already_asked() -> bool {
     let mut hkey = Default::default();
     if RegOpenKeyExW(
         HKEY_CURRENT_USER,
-        w!("Software\\BetterSS"),
+        w!("Software\\Pixnip"),
         Some(0),
         KEY_READ,
         &mut hkey,
@@ -158,7 +158,7 @@ unsafe fn already_asked() -> bool {
 
 unsafe fn mark_asked() {
     let mut hkey = Default::default();
-    if RegCreateKeyW(HKEY_CURRENT_USER, w!("Software\\BetterSS"), &mut hkey).is_err() {
+    if RegCreateKeyW(HKEY_CURRENT_USER, w!("Software\\Pixnip"), &mut hkey).is_err() {
         return;
     }
     let one: u32 = 1;
