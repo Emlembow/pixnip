@@ -2,87 +2,34 @@ use std::path::PathBuf;
 
 use crate::capture::CapturedMonitor;
 
-/// Default save location: `Pictures\Screenshots`, resolved via the OS
-/// known-folder API rather than a hardcoded path.
+/// Default save location: `%LOCALAPPDATA%\Pixnip\Screenshots`. Deliberately
+/// not `Pictures\Screenshots` — the Pictures library falls under Windows'
+/// Controlled Folder Access, which silently blocks unsigned apps from
+/// writing there (and asking users to punch holes in ransomware protection
+/// is not acceptable). Local app data is never CFA-protected.
 pub fn screenshots_dir() -> Result<PathBuf, String> {
-    let pictures = dirs::picture_dir().ok_or("could not resolve the Pictures folder")?;
-    Ok(pictures.join("Screenshots"))
-}
-
-/// Fallback when the primary folder is unwritable — typically because the
-/// Pictures folder is OneDrive-redirected and Windows' Controlled Folder
-/// Access blocks unrecognized apps (reported, misleadingly, as "file not
-/// found"). Local app data is never CFA-protected.
-fn fallback_screenshots_dir() -> Result<PathBuf, String> {
     let base = dirs::data_local_dir().ok_or("could not resolve local app data")?;
     Ok(base.join("Pixnip").join("Screenshots"))
 }
 
-/// The folder screenshots actually land in: the primary if writable,
-/// otherwise the fallback. Used by "Open Screenshots Folder".
+/// The folder screenshots land in. Used by "Open Screenshots Folder".
 pub fn effective_screenshots_dir() -> Result<PathBuf, String> {
-    if let Ok(dir) = screenshots_dir() {
-        if dir_is_writable(&dir) {
-            return Ok(dir);
-        }
-    }
-    fallback_screenshots_dir()
-}
-
-fn dir_is_writable(dir: &std::path::Path) -> bool {
-    if std::fs::create_dir_all(dir).is_err() {
-        return false;
-    }
-    let probe = dir.join(".pixnip-write-probe");
-    let ok = std::fs::write(&probe, b"").is_ok();
-    let _ = std::fs::remove_file(&probe);
-    ok
+    screenshots_dir()
 }
 
 /// Encodes a captured monitor as PNG and saves it into the screenshots
-/// folder (falling back to a non-protected folder if the primary one is
-/// blocked), creating the folder if needed. Returns the written file path.
+/// folder, creating it if needed. Returns the written file path.
 pub fn save_capture(capture: &CapturedMonitor) -> Result<PathBuf, String> {
     let filename = format!("{}.png", timestamped_filename());
-
-    let primary_err = match screenshots_dir().and_then(|dir| try_save(capture, &dir, &filename)) {
-        Ok(path) => return Ok(path),
-        Err(e) => e,
-    };
-
-    let fallback = fallback_screenshots_dir()?;
-    let path = try_save(capture, &fallback, &filename)
-        .map_err(|e| format!("primary save failed ({primary_err}); fallback failed ({e})"))?;
-    eprintln!(
-        "primary screenshots folder unwritable ({primary_err}); saved to {}",
-        path.display()
-    );
-    Ok(path)
+    try_save(capture, &screenshots_dir()?, &filename)
 }
 
-/// Saves already-encoded PNG bytes (from the editor's export canvas) with
-/// the same primary/fallback folder logic as raw captures.
+/// Saves already-encoded PNG bytes (from the editor's export canvas).
 pub fn save_png_bytes(png_bytes: &[u8]) -> Result<PathBuf, String> {
-    let filename = format!("{}.png", timestamped_filename());
-
-    let write_to = |dir: &std::path::Path| -> Result<PathBuf, String> {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        let path = dir.join(&filename);
-        std::fs::write(&path, png_bytes).map_err(|e| e.to_string())?;
-        Ok(path)
-    };
-
-    let primary_err = match screenshots_dir().and_then(|dir| write_to(&dir)) {
-        Ok(path) => return Ok(path),
-        Err(e) => e,
-    };
-    let fallback = fallback_screenshots_dir()?;
-    let path = write_to(&fallback)
-        .map_err(|e| format!("primary save failed ({primary_err}); fallback failed ({e})"))?;
-    eprintln!(
-        "primary screenshots folder unwritable ({primary_err}); saved to {}",
-        path.display()
-    );
+    let dir = screenshots_dir()?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{}.png", timestamped_filename()));
+    std::fs::write(&path, png_bytes).map_err(|e| e.to_string())?;
     Ok(path)
 }
 
@@ -152,10 +99,7 @@ mod tests {
         let monitors = crate::capture::capture_all_monitors().expect("capture failed");
         assert!(!monitors.is_empty(), "expected at least one monitor");
         for m in &monitors {
-            let path = save_capture(m).expect(
-                "save failed - if the screenshots folder lives under OneDrive, check Windows \
-                 Security > Ransomware protection > Controlled folder access and allow this exe",
-            );
+            let path = save_capture(m).expect("save failed");
             println!("saved {}x{} -> {}", m.width, m.height, path.display());
             assert!(path.exists());
         }

@@ -24,7 +24,7 @@ monitor's actual SDR white level, so captures look exactly like your screen.
 - **Markup editor** — pen, neon, highlighter, arrows, shapes, text with background pills, blur/redact, step badges, crop
 - **Direct manipulation** — tap anything to select, drag to move, grip to resize, tap a swatch to recolor
 - **Drag out** — pull the annotated shot straight into Slack, a browser upload box, or Explorer
-- **Tray app** — auto-saves to `Pictures\Screenshots` and copies to the clipboard
+- **Tray app** — auto-saves to `%LOCALAPPDATA%\Pixnip\Screenshots` (one click away via the tray) and copies to the clipboard
 
 ## Install
 
@@ -42,11 +42,6 @@ npm install
 npm run tauri dev    # run in development
 npm run tauri build  # produce a release build
 ```
-
-> **Screenshots not saving?** If your Pictures folder is OneDrive-redirected,
-> Windows' Controlled Folder Access may silently block unsigned builds.
-> Allow the exe under Windows Security → Ransomware protection, or Pixnip
-> falls back to `%LOCALAPPDATA%\Pixnip\Screenshots`.
 
 ## License
 
