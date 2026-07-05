@@ -1,38 +1,41 @@
-# Pixnip
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="128" alt="Pixnip logo">
+</p>
 
-A screenshot tool for Windows that actually works with HDR monitors.
+<h1 align="center">Pixnip</h1>
 
-## The problem
+<p align="center">
+  Screenshots that look right on HDR monitors — with a fast, modern markup editor.
+</p>
 
-Windows' built-in Snipping Tool captures the raw HDR framebuffer without
-tone mapping it down correctly. If you have HDR enabled — as you should —
-every screenshot of SDR content (browser windows, most apps) comes out
-blown out and washed out. Disabling HDR isn't an option if you want it for
-the content that actually benefits from it.
+---
 
-## What Pixnip does
+## Why
 
-- **Captures HDR displays correctly.** Reads each monitor's actual SDR
-  white level and tone-maps against it, so SDR content looks exactly as it
-  does on screen and true HDR highlights are compressed gracefully instead
-  of clipped.
-- **Intercepts PrintScreen** to launch a region picker instead of the
-  built-in Snipping Tool.
-- **Modern markup editor** — crop, pen, shapes, arrows, text, blur/redact,
-  step badges — in a minimal, Instagram/Snapchat-style interface.
-- **Lives in the tray** as a lightweight background app, auto-saving
-  screenshots to a configurable folder with clipboard copy on export.
+With HDR enabled, Windows' built-in Snipping Tool captures the raw framebuffer, so
+screenshots of normal (SDR) content come out washed out and blown out. Pixnip
+captures in FP16 via Windows.Graphics.Capture and tone-maps against each
+monitor's actual SDR white level, so captures look exactly like your screen.
 
-## Status
+## Features
 
-Early development. See the plan/roadmap for what's built so far.
+- **HDR-correct capture** — per-monitor tone mapping; SDR content stays true, HDR highlights compress gracefully
+- **PrintScreen region picker** with window snap (or a Ctrl+Alt+S hotkey if you'd rather keep Windows' default)
+- **Markup editor** — pen, neon, highlighter, arrows, shapes, text with background pills, blur/redact, step badges, crop
+- **Direct manipulation** — tap anything to select, drag to move, grip to resize, tap a swatch to recolor
+- **Drag out** — pull the annotated shot straight into Slack, a browser upload box, or Explorer
+- **Tray app** — auto-saves to `Pictures\Screenshots` and copies to the clipboard
 
-## Building from source
+## Install
 
-Requires:
-- [Rust](https://rustup.rs/) (stable, MSVC toolchain on Windows)
-- [Node.js](https://nodejs.org/) 18+
-- [Tauri prerequisites](https://tauri.app/start/prerequisites/) for Windows
+Grab the installer from [Releases](../../releases). Builds are currently
+unsigned, so SmartScreen may ask you to confirm — a Microsoft Store release
+is in the works.
+
+## Build from source
+
+Requires [Rust](https://rustup.rs/) (MSVC toolchain), [Node.js](https://nodejs.org/) 18+,
+and the [Tauri prerequisites](https://tauri.app/start/prerequisites/).
 
 ```sh
 npm install
@@ -40,14 +43,10 @@ npm run tauri dev    # run in development
 npm run tauri build  # produce a release build
 ```
 
-### If saved screenshots don't appear
-
-If your Pictures folder is redirected into OneDrive and screenshots silently
-fail to save, Windows' **Controlled Folder Access** (Windows Security >
-Virus & threat protection > Ransomware protection) is likely blocking an
-unrecognized/unsigned build of Pixnip from writing there. Add the exe
-under "Allow an app through Controlled folder access" — every screenshot
-tool runs into this on a fresh build.
+> **Screenshots not saving?** If your Pictures folder is OneDrive-redirected,
+> Windows' Controlled Folder Access may silently block unsigned builds.
+> Allow the exe under Windows Security → Ransomware protection, or Pixnip
+> falls back to `%LOCALAPPDATA%\Pixnip\Screenshots`.
 
 ## License
 
