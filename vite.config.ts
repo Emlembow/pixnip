@@ -35,6 +35,7 @@ export default defineConfig(async () => ({
       input: {
         main: resolveRoot("./index.html"),
         overlay: resolveRoot("./overlay.html"),
+        editor: resolveRoot("./editor.html"),
       },
     },
   },

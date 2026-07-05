@@ -1,9 +1,11 @@
 mod capture;
 mod commands;
+mod editor;
 mod hotkey;
 mod output;
 mod overlay;
 
+use editor::PendingEdit;
 use overlay::PendingCapture;
 
 use tauri::{
@@ -26,9 +28,15 @@ pub fn run() {
         }));
     }
 
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_drag::init());
+    }
+
     builder
         .plugin(tauri_plugin_opener::init())
         .manage(PendingCapture::new())
+        .manage(PendingEdit::new())
         .invoke_handler(tauri::generate_handler![
             commands::capture_full_screen,
             commands::start_region_capture,
@@ -37,22 +45,22 @@ pub fn run() {
             commands::finish_region_capture,
             commands::cancel_region_capture,
             commands::window_rect_at_point,
+            commands::get_edit_meta,
+            commands::editor_ready,
+            commands::save_edited,
+            commands::copy_edited,
+            commands::cancel_edit,
+            commands::export_drag_file,
+            commands::frontend_log,
         ])
         // Serves the frozen monitor frames to overlay windows as raw RGBA
         // bytes (http://capture.localhost/<monitor-index>). No PNG encode
         // here and no decode in the webview — the overlay blits the bytes
         // straight onto a canvas, so the frame appears near-instantly.
         .register_uri_scheme_protocol("capture", |ctx, request| {
-            let monitor: usize = request
-                .uri()
-                .path()
-                .trim_start_matches('/')
-                .parse()
-                .unwrap_or(usize::MAX);
-            let pending = ctx.app_handle().state::<PendingCapture>();
-            let monitors = pending.0.lock().unwrap();
-            match monitors.get(monitor) {
-                Some(m) => tauri::http::Response::builder()
+            let path = request.uri().path().trim_start_matches('/').to_owned();
+            let frame_response = |m: &capture::CapturedMonitor| {
+                tauri::http::Response::builder()
                     .header("Content-Type", "application/octet-stream")
                     .header("Access-Control-Allow-Origin", "*")
                     .header("X-Frame-Width", m.width.to_string())
@@ -62,11 +70,30 @@ pub fn run() {
                         "X-Frame-Width, X-Frame-Height",
                     )
                     .body(m.rgba.clone())
-                    .unwrap(),
-                None => tauri::http::Response::builder()
+                    .unwrap()
+            };
+            let not_found = || {
+                tauri::http::Response::builder()
                     .status(404)
                     .body(Vec::new())
-                    .unwrap(),
+                    .unwrap()
+            };
+
+            if path == "edit" {
+                let edit = ctx.app_handle().state::<PendingEdit>();
+                let guard = edit.0.lock().unwrap();
+                return match guard.as_ref() {
+                    Some(m) => frame_response(m),
+                    None => not_found(),
+                };
+            }
+
+            let monitor: usize = path.parse().unwrap_or(usize::MAX);
+            let pending = ctx.app_handle().state::<PendingCapture>();
+            let monitors = pending.0.lock().unwrap();
+            match monitors.get(monitor) {
+                Some(m) => frame_response(m),
+                None => not_found(),
             }
         })
         .setup(|app| {

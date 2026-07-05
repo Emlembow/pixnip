@@ -74,18 +74,23 @@ async function loadFrame() {
   await invoke("overlay_ready");
 }
 
+function reportError(context: string, err: unknown) {
+  const message = err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : String(err);
+  void invoke("frontend_log", { message: `overlay ${context}: ${message}` });
+}
+
+window.addEventListener("error", (e) => reportError("window.onerror", e.error ?? e.message));
+window.addEventListener("unhandledrejection", (e) => reportError("unhandledrejection", e.reason));
+
 function finish(localX: number, localY: number, width: number, height: number) {
   invoke("finish_region_capture", {
     monitor: monitorIndex,
-    x: localX,
-    y: localY,
-    width,
-    height,
-  }).catch((e) => console.error("finish_region_capture failed", e));
+    region: { x: localX, y: localY, width, height },
+  }).catch((e) => reportError("finish_region_capture", e));
 }
 
 function cancel() {
-  invoke("cancel_region_capture").catch((e) => console.error("cancel_region_capture failed", e));
+  invoke("cancel_region_capture").catch((e) => reportError("cancel_region_capture", e));
 }
 
 window.addEventListener("keydown", (e) => {

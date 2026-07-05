@@ -29,13 +29,21 @@ pub struct Placement {
     pub height: u32,
 }
 
-const OVERLAY_LABEL_PREFIX: &str = "overlay-";
+pub const OVERLAY_LABEL_PREFIX: &str = "overlay-";
 
 /// Opens one overlay window per captured monitor, positioned and sized to
 /// exactly cover it.
+///
+/// Labels are unique per capture session: destroying a window is
+/// asynchronous, so reusing a fixed label races the teardown of the
+/// previous session and fails with "webview already exists".
 pub fn open_overlays(app: &AppHandle, placements: &[Placement]) -> tauri::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SESSION: AtomicU64 = AtomicU64::new(0);
+    let session = SESSION.fetch_add(1, Ordering::Relaxed);
+
     for (index, placement) in placements.iter().enumerate() {
-        let label = format!("{OVERLAY_LABEL_PREFIX}{index}");
+        let label = format!("{OVERLAY_LABEL_PREFIX}{session}-{index}");
         let window = WebviewWindowBuilder::new(
             app,
             &label,
