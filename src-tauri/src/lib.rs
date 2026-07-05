@@ -4,15 +4,144 @@ mod editor;
 mod hotkey;
 mod output;
 mod overlay;
+mod settings;
 
 use editor::PendingEdit;
 use overlay::PendingCapture;
 
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    Manager, WindowEvent,
+    AppHandle, Manager, WindowEvent,
 };
+use tauri_plugin_autostart::ManagerExt as _;
+use tauri_plugin_global_shortcut::GlobalShortcutExt as _;
+
+/// The capture shortcut used when PrintScreen interception is off.
+const ALT_SHORTCUT: &str = "ctrl+alt+s";
+
+/// Applies the chosen capture-key mode: either swallow PrintScreen (and
+/// turn off Windows' Snipping Tool binding so they don't fight), or leave
+/// PrintScreen alone and bind Ctrl+Alt+S instead.
+fn apply_hotkey_mode(app: &AppHandle, use_print_screen: bool) {
+    hotkey::set_intercept(use_print_screen);
+    if use_print_screen {
+        hotkey::disable_windows_snipping_binding();
+        let _ = app.global_shortcut().unregister(ALT_SHORTCUT);
+    } else if let Err(e) = app.global_shortcut().register(ALT_SHORTCUT) {
+        eprintln!("failed to register {ALT_SHORTCUT}: {e}");
+    }
+}
+
+fn apply_autostart(app: &AppHandle, on: bool) {
+    let autolaunch = app.autolaunch();
+    let result = if on {
+        autolaunch.enable()
+    } else {
+        autolaunch.disable()
+    };
+    if let Err(e) = result {
+        eprintln!("autostart update failed: {e}");
+    }
+}
+
+/// Builds the tray icon and menu. Runs after the first-run questions have
+/// been answered so the check states reflect the settled settings.
+fn build_tray(app: &AppHandle, s: settings::Settings) -> tauri::Result<()> {
+    let capture_region =
+        MenuItem::with_id(app, "capture_region", "Capture Region", true, None::<&str>)?;
+    let capture_full = MenuItem::with_id(
+        app,
+        "capture_full_screen",
+        "Capture Full Screen",
+        true,
+        None::<&str>,
+    )?;
+    let open_folder = MenuItem::with_id(
+        app,
+        "open_screenshots_folder",
+        "Open Screenshots Folder",
+        true,
+        None::<&str>,
+    )?;
+    let autostart_item = CheckMenuItem::with_id(
+        app,
+        "autostart",
+        "Start with Windows",
+        true,
+        s.start_with_windows,
+        None::<&str>,
+    )?;
+    let prtsc_item = CheckMenuItem::with_id(
+        app,
+        "use_prtsc",
+        "Use PrintScreen Key (off: Ctrl+Alt+S)",
+        true,
+        s.use_print_screen,
+        None::<&str>,
+    )?;
+    let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &capture_region,
+            &capture_full,
+            &open_folder,
+            &PredefinedMenuItem::separator(app)?,
+            &autostart_item,
+            &prtsc_item,
+            &PredefinedMenuItem::separator(app)?,
+            &settings_item,
+            &quit,
+        ],
+    )?;
+
+    TrayIconBuilder::new()
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(move |app, event| match event.id.as_ref() {
+            "capture_region" => commands::trigger_region_capture(app),
+            "capture_full_screen" => {
+                if let Err(e) = commands::capture_full_screen() {
+                    eprintln!("capture failed: {e}");
+                }
+            }
+            "open_screenshots_folder" => {
+                if let Ok(dir) = output::effective_screenshots_dir() {
+                    let _ = std::fs::create_dir_all(&dir);
+                    let _ = std::process::Command::new("explorer").arg(dir).spawn();
+                }
+            }
+            // Check items toggle themselves on click; is_checked() is the
+            // new state.
+            "autostart" => {
+                let on = autostart_item.is_checked().unwrap_or(false);
+                let mut s = settings::load();
+                s.start_with_windows = on;
+                settings::save(&s);
+                apply_autostart(app, on);
+            }
+            "use_prtsc" => {
+                let on = prtsc_item.is_checked().unwrap_or(true);
+                let mut s = settings::load();
+                s.use_print_screen = on;
+                settings::save(&s);
+                apply_hotkey_mode(app, on);
+            }
+            "settings" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)?;
+    Ok(())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,17 +149,27 @@ pub fn run() {
 
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }));
-    }
-
-    #[cfg(desktop)]
-    {
-        builder = builder.plugin(tauri_plugin_drag::init());
+        builder = builder
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }))
+            .plugin(tauri_plugin_drag::init())
+            .plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ))
+            .plugin(
+                tauri_plugin_global_shortcut::Builder::new()
+                    .with_handler(|app, _shortcut, event| {
+                        if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            commands::trigger_region_capture(app);
+                        }
+                    })
+                    .build(),
+            );
     }
 
     builder
@@ -97,68 +236,45 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let capture_region =
-                MenuItem::with_id(app, "capture_region", "Capture Region", true, None::<&str>)?;
-            let capture_full = MenuItem::with_id(
-                app,
-                "capture_full_screen",
-                "Capture Full Screen",
-                true,
-                None::<&str>,
-            )?;
-            let open_folder = MenuItem::with_id(
-                app,
-                "open_screenshots_folder",
-                "Open Screenshots Folder",
-                true,
-                None::<&str>,
-            )?;
-            let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &capture_region,
-                    &capture_full,
-                    &open_folder,
-                    &settings,
-                    &quit,
-                ],
-            )?;
-
-            TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .show_menu_on_left_click(true)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "capture_region" => commands::trigger_region_capture(app),
-                    "capture_full_screen" => {
-                        if let Err(e) = commands::capture_full_screen() {
-                            eprintln!("capture failed: {e}");
-                        }
-                    }
-                    "open_screenshots_folder" => {
-                        if let Ok(dir) = output::effective_screenshots_dir() {
-                            let _ = std::fs::create_dir_all(&dir);
-                            let _ = std::process::Command::new("explorer").arg(dir).spawn();
-                        }
-                    }
-                    "settings" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
-                .build(app)?;
-
-            hotkey::maybe_prompt_disable_snipping_binding();
-            let app_handle = app.handle().clone();
+            // The PrintScreen hook is always installed but only swallows
+            // the key once settings say so (set_intercept below).
+            let hook_handle = app.handle().clone();
             std::thread::spawn(move || {
                 hotkey::run_blocking(move || {
-                    commands::trigger_region_capture(&app_handle);
+                    commands::trigger_region_capture(&hook_handle);
+                });
+            });
+
+            // First-run questions (blocking native prompts, so off the main
+            // thread), then build the tray with the settled check states
+            // and apply both settings.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let mut s = settings::load();
+                if !s.first_run_done {
+                    s.start_with_windows = hotkey::ask_yes_no(
+                        "Start Pixnip automatically with Windows?\n\n\
+                         It runs quietly in the tray, ready to capture.",
+                    );
+                    s.use_print_screen = hotkey::ask_yes_no(
+                        "Use the PrintScreen key to capture?\n\n\
+                         Yes \u{2014} PrintScreen opens Pixnip's capture \
+                         (Windows' Snipping Tool binding is turned off).\n\
+                         No \u{2014} Pixnip binds Ctrl+Alt+S and leaves \
+                         PrintScreen alone.\n\n\
+                         You can change both choices any time from the tray menu.",
+                    );
+                    s.first_run_done = true;
+                    settings::save(&s);
+                    apply_autostart(&handle, s.start_with_windows);
+                }
+                apply_hotkey_mode(&handle, s.use_print_screen);
+
+                let tray_handle = handle.clone();
+                let _ = handle.run_on_main_thread(move || {
+                    if let Err(e) = build_tray(&tray_handle, s) {
+                        eprintln!("failed to build tray: {e}");
+                    }
                 });
             });
 
