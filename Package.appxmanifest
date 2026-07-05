@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  MSIX manifest for Microsoft Store distribution (packed via `winapp pack`,
+  see packaging/pack-msix.ps1).
+
+  Before a real Store submission, replace Identity Name / Publisher and
+  PublisherDisplayName with the exact values Partner Center shows under
+  Product management > Product identity after reserving the app name.
+  The local values below only need to match the dev certificate for
+  side-load testing; the Store re-signs the package on ingestion.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap2 uap3 uap10 desktop desktop6 rescap">
+
+  <Identity
+    Name="Pixnip"
+    Publisher="CN=Micha"
+    Version="0.1.0.0" />
+
+  <Properties>
+    <DisplayName>Pixnip</DisplayName>
+    <PublisherDisplayName>Micha</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.18362.0" MaxVersionTested="10.0.26200.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="Pixnip"
+      Executable="pixnip.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Pixnip"
+        Description="HDR-correct screenshots with a fast markup editor. Capture with PrintScreen, annotate, and drag the result into any app."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\MedTile.png"
+        Square44x44Logo="Assets\AppList.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\WideTile.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- MSIX-virtualized registry Run keys don't execute at logon, so
+             start-with-Windows must go through a declared startup task.
+             Disabled by default; the in-app toggle enables it. -->
+        <desktop:Extension
+          Category="windows.startupTask"
+          Executable="pixnip.exe"
+          EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask
+            TaskId="PixnipStartup"
+            Enabled="false"
+            DisplayName="Pixnip" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

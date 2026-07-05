@@ -25,3 +25,8 @@ src-tauri/target
 *.njsproj
 *.sln
 *.sw?
+
+# MSIX packaging outputs (never commit the dev signing cert)
+dist-msix
+*.msix
+devcert.pfx

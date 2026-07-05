@@ -34,6 +34,31 @@ fn apply_hotkey_mode(app: &AppHandle, use_print_screen: bool) {
 }
 
 fn apply_autostart(app: &AppHandle, on: bool) {
+    // Under MSIX (Store install), registry Run keys are virtualized and
+    // never execute at logon — start-with-Windows must go through the
+    // StartupTask declared in Package.appxmanifest instead.
+    if windows::ApplicationModel::Package::Current().is_ok() {
+        let result = (|| -> windows::core::Result<()> {
+            let task = windows::ApplicationModel::StartupTask::GetAsync(
+                &windows::core::HSTRING::from("PixnipStartup"),
+            )?
+            .get()?;
+            if on {
+                // May surface a system consent prompt; the returned state
+                // reflects the user's answer.
+                let state = task.RequestEnableAsync()?.get()?;
+                eprintln!("startup task state: {state:?}");
+            } else {
+                task.Disable()?;
+            }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            eprintln!("startup task update failed: {e}");
+        }
+        return;
+    }
+
     let autolaunch = app.autolaunch();
     let result = if on {
         autolaunch.enable()
